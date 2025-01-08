@@ -1,17 +1,70 @@
+[project]
+name = "arch"
+dynamic = ["dependencies", "version", "readme"]
+license = { file = "LICENSE.md" }
+authors = [{ name = "Kevin Sheppard", email = "kevin.k.sheppard@gmail.com" }]
+maintainers = [
+  { name = "Kevin Sheppard", email = "kevin.k.sheppard@gmail.com" },
+]
+description = "ARCH for Python"
+requires-python = ">=3.9"
+keywords = [
+  "arch",
+  "ARCH",
+  "variance",
+  "econometrics",
+  "volatility",
+  "finance",
+  "GARCH",
+  "bootstrap",
+  "random walk",
+  "unit root",
+  "Dickey Fuller",
+  "time series",
+  "confidence intervals",
+  "multiple comparisons",
+  "Reality Check",
+  "SPA",
+  "StepM",
+]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Intended Audience :: End Users/Desktop",
+  "Intended Audience :: Financial and Insurance Industry",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "License :: OSI Approved :: University of Illinois/NCSA Open Source License",
+  "Operating System :: MacOS :: MacOS X",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: POSIX",
+  "Programming Language :: Python",
+  "Programming Language :: Cython",
+  "Topic :: Scientific/Engineering",
+]
+
+[project.urls]
+homepage = "https://github.com/bashtage/arch"
+documentation = "https://bashtage.github.io/arch/"
+repository = "https://github.com/bashtage/arch"
+changelog = "https://bashtage.github.io/arch/changes.html"
+
 [build-system]
 requires = [
   "setuptools>=61",
   "wheel",
-  "setuptools_scm[toml]>=7,<8",
-  "oldest-supported-numpy",
-  "numpy; python_version>='3.11'",
-  "Cython>=0.29.24"
+  "setuptools_scm[toml]>=8.0.3,<9",
+  "cython>=3.0.10",
+  "numpy>=2.0.0rc1,<3"
 ]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
 
 [tool.black]
-target-version = ['py38', 'py39', 'py310']
+target-version = ['py39', 'py310', 'py311', 'py312']
 exclude = '''
 (
     \.egg
@@ -27,3 +80,6 @@ exclude = '''
 
 [tool.setuptools_scm]
 write_to = "arch/_version.py"
+
+[tool.ruff.lint]
+typing-modules = ["arch.typing"]

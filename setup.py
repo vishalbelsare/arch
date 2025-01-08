@@ -1,14 +1,11 @@
-from setuptools import Command, Extension, find_packages, setup
+from setuptools import Command, Extension, find_namespace_packages, setup
+from setuptools.command.build_ext import build_ext as _build_ext
 from setuptools.dist import Distribution
 from setuptools.errors import CCompilerError, ExecError, PlatformError
 
 from collections import defaultdict
-
 import fnmatch
 import os
-import pathlib
-
-import pkg_resources
 
 CYTHON_COVERAGE = os.environ.get("ARCH_CYTHON_COVERAGE", "0") in ("true", "1", "True")
 if CYTHON_COVERAGE:
@@ -19,7 +16,6 @@ if CYTHON_COVERAGE:
 
 try:
     from Cython.Build import cythonize
-    from Cython.Distutils.build_ext import build_ext as _build_ext
 
     CYTHON_INSTALLED = True
 except ImportError:
@@ -29,7 +25,6 @@ except ImportError:
             "cython is required for cython coverage. Unset " "ARCH_CYTHON_COVERAGE"
         )
 
-    from setuptools.command.build_ext import build_ext as _build_ext
 
 FAILED_COMPILER_WARNING = """
 ******************************************************************************
@@ -49,19 +44,13 @@ extension modules or to use numba.
 # prevent setup.py from crashing by calling import numpy before numpy is installed
 class build_ext(_build_ext):
     def build_extensions(self) -> None:
-        numpy_incl = pkg_resources.resource_filename("numpy", "core/include")
+        import numpy as np
 
+        numpy_incl = np.get_include()
         for ext in self.extensions:
             if hasattr(ext, "include_dirs") and numpy_incl not in ext.include_dirs:
                 ext.include_dirs.append(numpy_incl)
         _build_ext.build_extensions(self)
-
-
-with pathlib.Path("requirements.txt").open() as requirements_txt:
-    install_requires = [
-        str(requirement)
-        for requirement in pkg_resources.parse_requirements(requirements_txt)
-    ]
 
 
 cmdclass = {"build_ext": build_ext}
@@ -116,7 +105,15 @@ installed.
 """
         )
     else:
-        directives = {"linetrace": CYTHON_COVERAGE}
+        directives = {
+            "language_level": "3",
+            "cpow": True,
+            "linetrace": CYTHON_COVERAGE,
+            "boundscheck": False,
+            "wraparound": False,
+            "cdivision": True,
+            "binding": True,
+        }
         macros = [("NPY_NO_DEPRECATED_API", "NPY_1_7_API_VERSION")]
         if CYTHON_COVERAGE:
             macros.append(("CYTHON_TRACE", "1"))
@@ -142,57 +139,16 @@ installed.
 
     setup(
         name="arch",
-        license="NCSA",
-        description="ARCH for Python",
         long_description=description,
         long_description_content_type="text/markdown",
-        author="Kevin Sheppard",
-        author_email="kevin.sheppard@economics.ox.ac.uk",
-        url="https://github.com/bashtage/arch",
-        packages=find_packages(),
+        packages=["arch"] + find_namespace_packages(),
         ext_modules=extensions,
         package_dir={"arch": "./arch"},
         cmdclass=cmdclass,
-        keywords=[
-            "arch",
-            "ARCH",
-            "variance",
-            "econometrics",
-            "volatility",
-            "finance",
-            "GARCH",
-            "bootstrap",
-            "random walk",
-            "unit root",
-            "Dickey Fuller",
-            "time series",
-            "confidence intervals",
-            "multiple comparisons",
-            "Reality Check",
-            "SPA",
-            "StepM",
-        ],
         zip_safe=False,
         include_package_data=False,
         package_data=package_data,
         distclass=BinaryDistribution,
-        classifiers=[
-            "Development Status :: 5 - Production/Stable",
-            "Intended Audience :: End Users/Desktop",
-            "Intended Audience :: Financial and Insurance Industry",
-            "Programming Language :: Python :: 3.7",
-            "Programming Language :: Python :: 3.8",
-            "Programming Language :: Python :: 3.9",
-            "License :: OSI Approved",
-            "Operating System :: MacOS :: MacOS X",
-            "Operating System :: Microsoft :: Windows",
-            "Operating System :: POSIX",
-            "Programming Language :: Python",
-            "Programming Language :: Cython",
-            "Topic :: Scientific/Engineering",
-        ],
-        install_requires=install_requires,
-        python_requires=">=3.8",
     )
 
 

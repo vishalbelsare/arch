@@ -302,7 +302,7 @@ class TestStepM:
             stepm.superior_models
 
     def test_exact_ties(self):
-        adj_models: pd.DataFrame = self.models_df - 100.0
+        adj_models = self.models_df - 100.0
         adj_models.iloc[:, :2] -= adj_models.iloc[:, :2].mean()
         adj_models.iloc[:, :2] += self.benchmark_df.mean().iloc[0]
         stepm = StepM(self.benchmark_df, adj_models, size=0.10)
@@ -496,3 +496,11 @@ class TestMCS:
         mcs.compute()
         assert len(mcs.included) > 0
         assert (len(mcs.included) + len(mcs.excluded)) == 20
+
+
+def test_bad_values():
+    # GH 654
+    qlike = np.array([[0.38443391, 0.39939706, 0.2619653]])
+    q = MCS(qlike, size=0.05, method="max")
+    with pytest.warns(RuntimeWarning, match="During computation of a step"):
+        q.compute()

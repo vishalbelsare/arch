@@ -1,6 +1,4 @@
-from __future__ import annotations
-
-from typing import cast
+from typing import Optional, cast
 
 import numpy as np
 import pandas as pd
@@ -9,7 +7,7 @@ from statsmodels.iolib.summary import Summary
 from statsmodels.iolib.table import SimpleTable
 from statsmodels.regression.linear_model import RegressionResults
 
-import arch.covariance.kernel as lrcov
+from arch.covariance.kernel import CovarianceEstimator
 from arch.typing import ArrayLike1D, ArrayLike2D, Literal, UnitRootTrend
 from arch.unitroot._shared import (
     KERNEL_ERR,
@@ -42,9 +40,9 @@ def _po_ptests(
     test_type: Literal["Pu", "Pz"],
     trend: UnitRootTrend,
     kernel: str,
-    bandwidth: int | None,
+    bandwidth: Optional[int],
     force_int: bool,
-) -> PhillipsOuliarisTestResults:
+) -> "PhillipsOuliarisTestResults":
     nobs = z.shape[0]
     z_lead = z.iloc[1:]
     z_lag = add_trend(z.iloc[:-1], trend=trend)
@@ -94,9 +92,9 @@ def _po_ztests(
     test_type: Literal["Za", "Zt"],
     trend: UnitRootTrend,
     kernel: str,
-    bandwidth: int | None,
+    bandwidth: Optional[int],
     force_int: bool,
-) -> PhillipsOuliarisTestResults:
+) -> "PhillipsOuliarisTestResults":
     # Za and Zt tests
     u = np.asarray(xsection.resid)[:, None]
     nobs = u.shape[0]
@@ -139,9 +137,9 @@ def phillips_ouliaris(
     *,
     test_type: Literal["Za", "Zt", "Pu", "Pz"] = "Zt",
     kernel: str = "bartlett",
-    bandwidth: int | None = None,
+    bandwidth: Optional[int] = None,
     force_int: bool = False,
-) -> PhillipsOuliarisTestResults:
+) -> "PhillipsOuliarisTestResults":
     r"""
     Test for cointegration within a set of time series.
 
@@ -175,9 +173,7 @@ def phillips_ouliaris(
         and "quadratic-spectral" for the Quadratic Spectral kernel.
     bandwidth : int, default None
         The bandwidth to use. If not provided, the optimal bandwidth is
-        estimated from the data. Setting the bandwidth to 0 and using
-        "unadjusted" produces the classic OLS covariance estimator.
-        Setting the bandwidth to 0 and using "robust" produces White's
+        estimated from the data. Setting the bandwidth to 0 produces White's
         covariance estimator.
     force_int : bool, default False
         Whether the force the estimated optimal bandwidth to be an integer.
@@ -198,14 +194,6 @@ def phillips_ouliaris(
 
     Notes
     -----
-
-    .. warning::
-
-       The critical value simulation is on-going and so the critical values
-       may change slightly as more simulations are completed. These are still
-       based on far more simulations (minimum 2,000,000) than were possible
-       in 1990 (5000) that are reported in [1]_.
-
     Supports 4 distinct tests.
 
     Define the cross-sectional regression
@@ -241,7 +229,8 @@ def phillips_ouliaris(
     .. math::
 
        \hat{\omega}_{11\cdot 2} = \hat{\omega}_{11}
-                                 - \hat{\omega}'_{21} \hat{\Omega}_{22}^{-1} \hat{\omega}_{21}
+                                 - \hat{\omega}'_{21} \hat{\Omega}_{22}^{-1}
+                                   \hat{\omega}_{21}
 
     and
 
@@ -275,7 +264,7 @@ def phillips_ouliaris(
     differs from the expression in [1]_. We recenter :math:`z_t` by subtracting
     the first observation, so that :math:`\tilde{z}_t = z_t - z_1`. This is
     needed to ensure that the initial value does not affect the distribution
-    under the null. When the trend is anything other than "n", this set is not
+    under the null. When the trend is anything other than "n", this step is not
     needed and the test statistics is identical whether the first observation
     is subtracted or not.
 
@@ -330,9 +319,9 @@ class PhillipsOuliarisTestResults(ResidualCointegrationTestResult):
         alternative: str = "Cointegration",
         trend: str = "c",
         order: int = 2,
-        xsection: RegressionResults | None = None,
+        xsection: Optional[RegressionResults] = None,
         test_type: str = "Za",
-        kernel_est: lrcov.CovarianceEstimator | None = None,
+        kernel_est: Optional[CovarianceEstimator] = None,
         rho: float = 0.0,
     ) -> None:
         super().__init__(

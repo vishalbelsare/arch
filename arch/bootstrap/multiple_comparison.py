@@ -1,7 +1,7 @@
-from __future__ import annotations
-
+from collections.abc import Hashable, Sequence
 import copy
-from typing import Hashable, Sequence, cast
+from typing import Optional, Union, cast
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -67,7 +67,7 @@ class MultipleComparison:
         """
         self.bootstrap.reset()
 
-    def seed(self, value: int | list[int] | Uint32Array) -> None:
+    def seed(self, value: Union[int, list[int], Uint32Array]) -> None:
         """
         Seed the bootstrap's random number generator
 
@@ -124,13 +124,13 @@ class MCS(MultipleComparison):
         losses: ArrayLike2D,
         size: float,
         reps: int = 1000,
-        block_size: int | None = None,
+        block_size: Optional[int] = None,
         method: Literal["R", "max"] = "R",
         bootstrap: Literal[
             "stationary", "sb", "circular", "cbb", "moving block", "mbb"
         ] = "stationary",
         *,
-        seed: None | int | np.random.Generator | np.random.RandomState = None,
+        seed: Union[int, np.random.Generator, np.random.RandomState, None] = None,
     ) -> None:
         super().__init__()
         self.losses = ensure2d(losses, "losses")
@@ -289,6 +289,15 @@ class MCS(MultipleComparison):
             # Reshape for broadcast
             incl_bs_avg_loss_err -= incl_bs_grand_loss[:, None]
             std_devs = np.sqrt((incl_bs_avg_loss_err**2).mean(0))
+            if np.any(std_devs <= 0):
+                warnings.warn(
+                    "During computation of a step of the MCS the estimated standard "
+                    "deviation of at least one loss difference was 0.  This "
+                    "indicates that the MCS is not valid for this problem. This can "
+                    "occur if the number of losses is too small, or if there are "
+                    "repeated (identical) losses in the set under consideration.",
+                    RuntimeWarning,
+                )
             simulated_test_stat = incl_bs_avg_loss_err / std_devs
             simulated_test_stat = np.max(simulated_test_stat, 1)
             loss_diffs = incl_losses.mean(0)
@@ -297,7 +306,8 @@ class MCS(MultipleComparison):
             test_stat = np.max(std_loss_diffs)
             pval = (test_stat < simulated_test_stat).mean()
             locs = np.argwhere(std_loss_diffs == test_stat)
-            eliminated.append((int(indices.flat[locs.squeeze()]), pval))
+            for idx_val in indices.flat[np.atleast_1d(locs.squeeze())]:
+                eliminated.append((int(idx_val), pval))
             included[indices.flat[locs]] = False
 
         indices = np.argwhere(included).flatten()
@@ -316,8 +326,8 @@ class MCS(MultipleComparison):
             List of column indices or names of the included models
         """
         self._has_been_computed()
-        included = self._pvalues.Pvalue > self.size
-        included = list(self._pvalues.index[included])
+        incl_loc = self._pvalues.Pvalue > self.size
+        included = list(self._pvalues.index[incl_loc])
         included.sort()
         return included
 
@@ -332,8 +342,8 @@ class MCS(MultipleComparison):
             List of column indices or names of the excluded models
         """
         self._has_been_computed()
-        excluded = self._pvalues.Pvalue <= self.size
-        excluded = list(self._pvalues.index[excluded])
+        excl_loc = self._pvalues.Pvalue <= self.size
+        excluded = list(self._pvalues.index[excl_loc])
         excluded.sort()
         return excluded
 
@@ -410,7 +420,7 @@ class StepM(MultipleComparison):
         benchmark: ArrayLike,
         models: ArrayLike,
         size: float = 0.05,
-        block_size: int | None = None,
+        block_size: Optional[int] = None,
         reps: int = 1000,
         bootstrap: Literal[
             "stationary", "sb", "circular", "cbb", "moving block", "mbb"
@@ -418,7 +428,7 @@ class StepM(MultipleComparison):
         studentize: bool = True,
         nested: bool = False,
         *,
-        seed: None | int | np.random.Generator | np.random.RandomState = None,
+        seed: Union[int, np.random.Generator, np.random.RandomState, None] = None,
     ) -> None:
         super().__init__()
         self.benchmark = ensure2d(benchmark, "benchmark")
@@ -438,7 +448,7 @@ class StepM(MultipleComparison):
         self.k: int = self.models.shape[1]
         self.reps: int = reps
         self.size: float = size
-        self._superior_models: list[Hashable] | None = None
+        self._superior_models: Optional[list[Hashable]] = None
         self.bootstrap: CircularBlockBootstrap = self.spa.bootstrap
 
         self._model = "StepM"
@@ -525,7 +535,7 @@ class SPA(MultipleComparison, metaclass=DocStringInheritor):
         'moving block' or 'mbb': Moving block bootstrap
     studentize : bool
         Flag indicating to studentize loss differentials. Default is True
-    nested=False
+    nested : bool
         Flag indicating to use a nested bootstrap to compute variances for
         studentization.  Default is False.  Note that this can be slow since
         the procedure requires k extra bootstraps.
@@ -559,7 +569,7 @@ class SPA(MultipleComparison, metaclass=DocStringInheritor):
         self,
         benchmark: ArrayLike,
         models: ArrayLike,
-        block_size: int | None = None,
+        block_size: Optional[int] = None,
         reps: int = 1000,
         bootstrap: Literal[
             "stationary", "sb", "circular", "cbb", "moving block", "mbb"
@@ -567,7 +577,7 @@ class SPA(MultipleComparison, metaclass=DocStringInheritor):
         studentize: bool = True,
         nested: bool = False,
         *,
-        seed: None | int | np.random.Generator | np.random.RandomState = None,
+        seed: Union[int, np.random.Generator, np.random.RandomState, None] = None,
     ) -> None:
         super().__init__()
         self.benchmark = ensure2d(benchmark, "benchmark")
@@ -601,7 +611,7 @@ class SPA(MultipleComparison, metaclass=DocStringInheritor):
         self._seed = seed
         self.bootstrap: CircularBlockBootstrap = bootstrap_inst
         self._pvalues: dict[str, float] = {}
-        self._simulated_vals: Float64Array | None = None
+        self._simulated_vals: Optional[Float64Array] = None
         self._selector = np.ones(self.k, dtype=np.bool_)
         self._model = "SPA"
         if self.studentize:
@@ -771,7 +781,7 @@ class SPA(MultipleComparison, metaclass=DocStringInheritor):
         self,
         pvalue: float = 0.05,
         pvalue_type: Literal["lower", "consistent", "upper"] = "consistent",
-    ) -> Int64Array | list[Hashable]:
+    ) -> Union[Int64Array, list[Hashable]]:
         """
         Returns set of models rejected as being equal-or-worse than the
         benchmark

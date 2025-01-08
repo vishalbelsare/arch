@@ -7,6 +7,7 @@ parameters:
   # defaults for any parameters that are not specified
   name: ''
   vmImage: ''
+  use.numba: 'true'
 
 
 jobs:
@@ -16,12 +17,17 @@ jobs:
     vmImage: ${{ parameters.vmImage }}
   strategy:
     matrix:
-      python38_win_latest:
-        python.version: '3.8'
       python39_win_latest:
         python.version: '3.9'
+        use.numba: 'false'
       python310_win_latest:
         python.version: '3.10'
+      python311_win_latest:
+        python.version: '3.11'
+      python312_win_latest:
+        python.version: '3.12'
+      python313_win_latest:
+        python.version: '3.12'
     maxParallel: 10
 
   steps:
@@ -32,10 +38,15 @@ jobs:
     displayName: 'Use Python $(python.version)'
 
   - script: |
-      python -m pip install --upgrade pip setuptools wheel
-      python -m pip install -r requirements.txt
+      python -m pip install --upgrade pip "setuptools>=61" wheel
       python -m pip install -r requirements-dev.txt
+      python -m pip install -r requirements.txt
     displayName: 'Install dependencies'
+
+  - script: |
+      python -m pip uninstall numba -y
+    condition: eq(variables['use.numba'], 'false')
+    displayName: 'Remove numba on Python 3.9'
 
   - script: |
       python -m pip list

@@ -1,6 +1,7 @@
 """
 Simulation for critical value production for Engle-Granger
 """
+
 import argparse
 import datetime as dt
 from functools import partial
@@ -8,7 +9,7 @@ from itertools import product
 import os
 from random import shuffle
 import sys
-from typing import List
+from typing import Sequence
 
 import colorama
 from joblib import Parallel, cpu_count, delayed
@@ -35,7 +36,7 @@ if sys.platform.lower() == "win32":
 def block(
     rg: Generator,
     trend: str,
-    sample_sizes: List[int],
+    sample_sizes: Sequence[int],
     cross_section_size: int,
     simulations: int,
     idx: int,
@@ -228,7 +229,7 @@ if __name__ == "__main__":
 
     shuffle(remaining_configs)
     if njobs == 1:
-        for ((idx, rg), trend) in remaining_configs:
+        for (idx, rg), trend in remaining_configs:
             partial_block(rg, trend=trend, idx=idx)
     else:
         Parallel(verbose=50, n_jobs=njobs)(

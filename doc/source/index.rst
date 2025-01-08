@@ -1,3 +1,5 @@
+:hero: Univariate volatility modeling, bootstrapping, multiple comparison procedures and unit root tests.
+
 .. image:: images/color-logo.svg
    :width: 33.3%
    :alt: arch logo
@@ -34,13 +36,15 @@ routines relevant for the analysis of financial data.
     Unit Root Tests and Cointegration Analysis <unitroot/unitroot>
     Long-run Covariance Estimation <covariance/covariance>
     API Reference <api>
+    Common Type Definitions <types>
     Change Log <changes>
 
 Citation
 ========
-This package should be cited using Zenodo. For example, for the 4.13 release,
+This package should be cited using Zenodo. For example, for the 4.13 release please
+cite [arch]_ as:
 
-.. [*] Kevin Sheppard (2021, March 3). bashtage/arch: Release 4.18 (Version v4.18).
+.. [arch] Kevin Sheppard (2021, March 3). bashtage/arch: Release 4.18 (Version v4.18).
    Zenodo. https://doi.org/10.5281/zenodo.593254
 
 .. image:: https://zenodo.org/badge/doi/10.5281/zenodo.593254.svg

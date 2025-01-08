@@ -1,7 +1,6 @@
-from __future__ import annotations
-
 from abc import ABCMeta, abstractmethod
-from typing import Sequence, cast
+from collections.abc import Sequence
+from typing import Optional, Union, cast
 import warnings
 
 from numpy import (
@@ -81,6 +80,7 @@ from arch.utility.array import AbstractDocStringInheritor, ensure1d, ensure2d
 from arch.utility.exceptions import (
     InfeasibleTestException,
     InvalidLengthWarning,
+    PerformanceWarning,
     invalid_length_doc,
 )
 from arch.utility.timeseries import add_trend
@@ -119,7 +119,9 @@ SHORT_TREND_DESCRIPTION = {
 }
 
 
-def _is_reduced_rank(x: Float64Array | DataFrame) -> tuple[bool, int | None]:
+def _is_reduced_rank(
+    x: Union[Float64Array, DataFrame],
+) -> tuple[bool, Union[int, None]]:
     """
     Check if a matrix has reduced rank preferring quick checks
     """
@@ -238,15 +240,15 @@ def _autolag_ols_low_memory(
             tt *= sqrt(5) / float(nobs) ** (5 / 2)
             trendx.append(tt)
         if "t" in trend:
-            t = arange(1, nobs + 1, dtype=float64)[:, None]
+            t = arange(1, nobs + 1, dtype=float)[:, None]
             t *= sqrt(3) / float(nobs) ** (3 / 2)
             trendx.append(t)
         if trend.startswith("c"):
             trendx.append(ones((nobs, 1)) / sqrt(nobs))
     rhs = hstack([level[:, None], hstack(trendx)])
     m = rhs.shape[1]
-    xpx = empty((m + maxlag, m + maxlag)) * nan
-    xpy = empty((m + maxlag, 1)) * nan
+    xpx = full((m + maxlag, m + maxlag), nan)
+    xpy = full((m + maxlag, 1), nan)
     assert isinstance(xpx, ndarray)
     assert isinstance(xpy, ndarray)
     xpy[:m] = rhs.T @ lhs
@@ -275,11 +277,11 @@ def _autolag_ols_low_memory(
             raise InfeasibleTestException(
                 singular_array_error.format(max_lags=maxlag, lag=m - i)
             )
-        sigma2[i - m] = (ypy - b.T @ xpx_sub @ b) / nobs
+        sigma2[i - m] = squeeze(ypy - b.T @ xpx_sub @ b) / nobs
         if lower_method == "t-stat":
             xpxi = inv(xpx_sub)
             stderr = sqrt(sigma2[i - m] * xpxi[-1, -1])
-            tstat[i - m] = b[-1] / stderr
+            tstat[i - m] = squeeze(b[-1]) / stderr
 
     return _select_best_ic(method, nobs, sigma2, tstat)
 
@@ -346,11 +348,11 @@ def _autolag_ols(
     tstat[0] = inf
     for i in range(startlag, startlag + maxlag + 1):
         b = solve(r[:i, :i], qpy[:i])
-        sigma2[i - startlag] = (ypy - b.T @ xpx[:i, :i] @ b) / nobs
+        sigma2[i - startlag] = squeeze(ypy - b.T @ xpx[:i, :i] @ b) / nobs
         if lower_method == "t-stat" and i > startlag:
             xpxi = inv(xpx[:i, :i])
             stderr = sqrt(sigma2[i - startlag] * xpxi[-1, -1])
-            tstat[i - startlag] = b[-1] / stderr
+            tstat[i - startlag] = squeeze(b[-1]) / stderr
 
     return _select_best_ic(method, nobs, sigma2, tstat)
 
@@ -358,7 +360,7 @@ def _autolag_ols(
 def _df_select_lags(
     y: Float64Array,
     trend: Literal["n", "c", "ct", "ctt"],
-    max_lags: int | None,
+    max_lags: Optional[int],
     method: Literal["aic", "bic", "t-stat"],
     low_memory: bool = False,
 ) -> tuple[float, int]:
@@ -401,6 +403,15 @@ def _df_select_lags(
     if max_lags is None:
         max_lags = int(ceil(12.0 * power(nobs / 100.0, 1 / 4.0)))
         max_lags = max(min(max_lags, max_max_lags), 0)
+        assert isinstance(max_lags, int)
+        if max_lags > 119:
+            warnings.warn(
+                "The value of max_lags was not specified and has been calculated as "
+                f"{max_lags}. Searching over a large lag length with a sample size "
+                f"of {nobs} is likely to be slow. Consider directly setting "
+                "``max_lags`` to a small value to avoid this performance issue.",
+                PerformanceWarning,
+            )
     assert max_lags is not None
     if low_memory:
         out = _autolag_ols_low_memory(y, max_lags, trend, method)
@@ -471,9 +482,9 @@ class UnitRootTest(metaclass=ABCMeta):
     def __init__(
         self,
         y: ArrayLike,
-        lags: int | None,
-        trend: UnitRootTrend | Literal["t"],
-        valid_trends: list[str] | tuple[str, ...],
+        lags: Optional[int],
+        trend: Union[UnitRootTrend, Literal["t"]],
+        valid_trends: Union[list[str], tuple[str, ...]],
     ) -> None:
         self._y = ensure1d(y, "y", series=False)
         self._delta_y = diff(y)
@@ -485,9 +496,9 @@ class UnitRootTest(metaclass=ABCMeta):
         if trend not in self.valid_trends:
             raise ValueError("trend not understood")
         self._trend = trend
-        self._stat: float | None = None
+        self._stat: Optional[float] = None
         self._critical_values: dict[str, float] = {}
-        self._pvalue: float | None = None
+        self._pvalue: Optional[float] = None
         self._null_hypothesis = "The process contains a unit root."
         self._alternative_hypothesis = "The process is weakly stationary."
         self._test_name = ""
@@ -686,7 +697,9 @@ class ADF(UnitRootTest, metaclass=AbstractDocStringInheritor):
     If the p-value is close to significant, then the critical values should be
     used to judge whether to reject the null.
 
-    The autolag option and maxlag for it are described in Greene.
+    The autolag option and maxlag for it are described in Greene [1]_.
+    See Hamilton [2]_ for more on ADF tests. Critical value simulation based
+    on MacKinnon [3]_ abd [4]_.
 
     Examples
     --------
@@ -696,31 +709,31 @@ class ADF(UnitRootTest, metaclass=AbstractDocStringInheritor):
     >>> data = sm.datasets.macrodata.load().data
     >>> inflation = np.diff(np.log(data["cpi"]))
     >>> adf = ADF(inflation)
-    >>> print("{0:0.4f}".format(adf.stat))
+    >>> print(f"{adf.stat:0.4f}")
     -3.0931
-    >>> print("{0:0.4f}".format(adf.pvalue))
+    >>> print(f"{adf.pvalue:0.4f}")
     0.0271
     >>> adf.lags
     2
     >>> adf.trend="ct"
-    >>> print("{0:0.4f}".format(adf.stat))
+    >>> print(f"{adf.stat:0.4f}")
     -3.2111
-    >>> print("{0:0.4f}".format(adf.pvalue))
+    >>> print(f"{adf.pvalue:0.4f}")
     0.0822
 
     References
     ----------
-    .. [*] Greene, W. H. 2011. Econometric Analysis. Prentice Hall: Upper
+    .. [1] Greene, W. H. 2011. Econometric Analysis. Prentice Hall: Upper
        Saddle River, New Jersey.
 
-    .. [*] Hamilton, J. D. 1994. Time Series Analysis. Princeton: Princeton
+    .. [2] Hamilton, J. D. 1994. Time Series Analysis. Princeton: Princeton
        University Press.
 
-    .. [*] MacKinnon, J.G. 1994.  "Approximate asymptotic distribution
+    .. [3] MacKinnon, J.G. 1994.  "Approximate asymptotic distribution
        functions for unit-root and cointegration bootstrap.  `Journal of
        Business and Economic Statistics` 12, 167-76.
 
-    .. [*] MacKinnon, J.G. 2010. "Critical Values for Cointegration Tests."
+    .. [4] MacKinnon, J.G. 2010. "Critical Values for Cointegration Tests."
        Queen's University, Dept of Economics, Working Papers.  Available at
        https://ideas.repec.org/p/qed/wpaper/1227.html
     """
@@ -728,11 +741,11 @@ class ADF(UnitRootTest, metaclass=AbstractDocStringInheritor):
     def __init__(
         self,
         y: ArrayLike,
-        lags: int | None = None,
+        lags: Optional[int] = None,
         trend: UnitRootTrend = "c",
-        max_lags: int | None = None,
+        max_lags: Optional[int] = None,
         method: Literal["aic", "bic", "t-stat"] = "aic",
-        low_memory: bool | None = None,
+        low_memory: Optional[bool] = None,
     ) -> None:
         valid_trends = ("n", "c", "ct", "ctt")
         super().__init__(y, lags, trend, valid_trends)
@@ -772,7 +785,7 @@ class ADF(UnitRootTest, metaclass=AbstractDocStringInheritor):
         y, trend, lags = self._y, self._trend, self._lags
         resols = _estimate_df_regression(y, cast(UnitRootTrend, trend), lags)
         self._regression = resols
-        self._stat = stat = resols.tvalues[0]
+        (self._stat, *_) = (stat, *_) = resols.tvalues
         self._nobs = int(resols.nobs)
         self._pvalue = mackinnonp(
             stat,
@@ -797,7 +810,7 @@ class ADF(UnitRootTest, metaclass=AbstractDocStringInheritor):
         return self._regression
 
     @property
-    def max_lags(self) -> int | None:
+    def max_lags(self) -> Union[int, None]:
         """Sets or gets the maximum lags used when automatically selecting lag
         length"""
         return self._max_lags
@@ -805,7 +818,7 @@ class ADF(UnitRootTest, metaclass=AbstractDocStringInheritor):
 
 class DFGLS(UnitRootTest, metaclass=AbstractDocStringInheritor):
     """
-    Elliott, Rothenberg and Stock's ([1]_) GLS detrended Dickey-Fuller
+    Elliott, Rothenberg and Stock's ([ers]_) GLS detrended Dickey-Fuller
 
     Parameters
     ----------
@@ -824,7 +837,7 @@ class DFGLS(UnitRootTest, metaclass=AbstractDocStringInheritor):
     max_lags : int, optional
         The maximum number of lags to use when selecting lag length. When using
         automatic lag length selection, the lag is selected using OLS
-        detrending rather than GLS detrending ([2]_).
+        detrending rather than GLS detrending ([pq]_).
     method : {"AIC", "BIC", "t-stat"}, optional
         The method to use when selecting the lag length
 
@@ -843,7 +856,7 @@ class DFGLS(UnitRootTest, metaclass=AbstractDocStringInheritor):
     is used before a trend-less ADF regression is run.
 
     Critical values and p-values when trend is "c" are identical to
-    the ADF.  When trend is set to "ct", they are from ...
+    the ADF.  When trend is set to "ct", they are from novel simulations.
 
     Examples
     --------
@@ -853,23 +866,23 @@ class DFGLS(UnitRootTest, metaclass=AbstractDocStringInheritor):
     >>> data = sm.datasets.macrodata.load().data
     >>> inflation = np.diff(np.log(data["cpi"]))
     >>> dfgls = DFGLS(inflation)
-    >>> print("{0:0.4f}".format(dfgls.stat))
+    >>> print(f"{dfgls.stat:0.4f}")
     -2.7611
-    >>> print("{0:0.4f}".format(dfgls.pvalue))
+    >>> print(f"{dfgls.pvalue:0.4f}")
     0.0059
     >>> dfgls.lags
     2
-    >>> dfgls.trend = "ct"
-    >>> print("{0:0.4f}".format(dfgls.stat))
+    >>> dfgls = DFGLS(inflation, trend = "ct")
+    >>> print(f"{dfgls.stat:0.4f}")
     -2.9036
-    >>> print("{0:0.4f}".format(dfgls.pvalue))
+    >>> print(f"{dfgls.pvalue:0.4f}")
     0.0447
 
     References
     ----------
-    .. [1] Elliott, G. R., T. J. Rothenberg, and J. H. Stock. 1996. Efficient
+    .. [ers] Elliott, G. R., T. J. Rothenberg, and J. H. Stock. 1996. Efficient
            bootstrap for an autoregressive unit root. Econometrica 64: 813-836
-    .. [2] Perron, P., & Qu, Z. (2007). A simple modification to improve the
+    .. [pq] Perron, P., & Qu, Z. (2007). A simple modification to improve the
            finite sample properties of Ng and Perron's unit root tests.
            Economics letters, 94(1), 12-19.
     """
@@ -877,11 +890,11 @@ class DFGLS(UnitRootTest, metaclass=AbstractDocStringInheritor):
     def __init__(
         self,
         y: ArrayLike,
-        lags: int | None = None,
+        lags: Optional[int] = None,
         trend: Literal["c", "ct"] = "c",
-        max_lags: int | None = None,
+        max_lags: Optional[int] = None,
         method: Literal["aic", "bic", "t-stat"] = "aic",
-        low_memory: bool | None = None,
+        low_memory: Optional[bool] = None,
     ) -> None:
         valid_trends = ("c", "ct")
         super().__init__(y, lags, trend, valid_trends)
@@ -942,7 +955,7 @@ class DFGLS(UnitRootTest, metaclass=AbstractDocStringInheritor):
         resols = _estimate_df_regression(y_detrended, lags=lags, trend="n")
         self._regression = resols
         self._nobs = int(resols.nobs)
-        self._stat = resols.tvalues[0]
+        self._stat, *_ = resols.tvalues
         assert self._stat is not None
         self._pvalue = mackinnonp(
             self._stat, regression=cast(Literal["c", "ct"], trend), dist_type="dfgls"
@@ -969,7 +982,7 @@ class DFGLS(UnitRootTest, metaclass=AbstractDocStringInheritor):
         return self._regression
 
     @property
-    def max_lags(self) -> int | None:
+    def max_lags(self) -> Union[int, None]:
         """Sets or gets the maximum lags used when automatically selecting lag
         length"""
         return self._max_lags
@@ -1011,8 +1024,12 @@ class PhillipsPerron(UnitRootTest, metaclass=AbstractDocStringInheritor):
     correlation in the regression errors is accounted for using a long-run
     variance estimator (currently Newey-West).
 
-    The p-values are obtained through regression surface approximation from
-    MacKinnon (1994) using the updated 2010 tables.
+    See Philips and Perron for details [3]_. See Hamilton [1]_ for more on
+    PP tests. Newey and West contains information about long-run variance
+    estimation [2]_. The p-values are obtained through regression surface
+    approximation using the mathodology of MacKinnon [4]_ and [5]_, only
+    using many more simulations.
+
     If the p-value is close to significant, then the critical values should be
     used to judge whether to reject the null.
 
@@ -1024,40 +1041,40 @@ class PhillipsPerron(UnitRootTest, metaclass=AbstractDocStringInheritor):
     >>> data = sm.datasets.macrodata.load().data
     >>> inflation = np.diff(np.log(data["cpi"]))
     >>> pp = PhillipsPerron(inflation)
-    >>> print("{0:0.4f}".format(pp.stat))
+    >>> print(f"{pp.stat:0.4f}")
     -8.1356
-    >>> print("{0:0.4f}".format(pp.pvalue))
+    >>> print(f"{pp.pvalue:0.4f}")
     0.0000
     >>> pp.lags
     15
     >>> pp.trend = "ct"
-    >>> print("{0:0.4f}".format(pp.stat))
+    >>> print(f"{pp.stat:0.4f}")
     -8.2022
-    >>> print("{0:0.4f}".format(pp.pvalue))
+    >>> print(f"{pp.pvalue:0.4f}")
     0.0000
     >>> pp.test_type = "rho"
-    >>> print("{0:0.4f}".format(pp.stat))
+    >>> print(f"{pp.stat:0.4f}")
     -120.3271
-    >>> print("{0:0.4f}".format(pp.pvalue))
+    >>> print(f"{pp.pvalue:0.4f}")
     0.0000
 
     References
     ----------
-    .. [*] Hamilton, J. D. 1994. Time Series Analysis. Princeton: Princeton
+    .. [1] Hamilton, J. D. 1994. Time Series Analysis. Princeton: Princeton
            University Press.
 
-    .. [*] Newey, W. K., and K. D. West. 1987. "A simple, positive
+    .. [2] Newey, W. K., and K. D. West. 1987. "A simple, positive
            semidefinite, heteroskedasticity and autocorrelation consistent covariance
            matrix". Econometrica 55, 703-708.
 
-    .. [*] Phillips, P. C. B., and P. Perron. 1988. "Testing for a unit root in
+    .. [3] Phillips, P. C. B., and P. Perron. 1988. "Testing for a unit root in
            time series regression". Biometrika 75, 335-346.
 
-    .. [*] MacKinnon, J.G. 1994.  "Approximate asymptotic distribution
+    .. [4] MacKinnon, J.G. 1994.  "Approximate asymptotic distribution
            functions for unit-root and cointegration bootstrap".  Journal of
            Business and  Economic Statistics. 12, 167-76.
 
-    .. [*] MacKinnon, J.G. 2010. "Critical Values for Cointegration Tests."
+    .. [5] MacKinnon, J.G. 2010. "Critical Values for Cointegration Tests."
            Queen's University, Dept of Economics, Working Papers.  Available at
            https://ideas.repec.org/p/qed/wpaper/1227.html
     """
@@ -1065,7 +1082,7 @@ class PhillipsPerron(UnitRootTest, metaclass=AbstractDocStringInheritor):
     def __init__(
         self,
         y: ArrayLike,
-        lags: int | None = None,
+        lags: Optional[int] = None,
         trend: Literal["n", "c", "ct"] = "c",
         test_type: Literal["tau", "rho"] = "tau",
     ) -> None:
@@ -1121,7 +1138,7 @@ class PhillipsPerron(UnitRootTest, metaclass=AbstractDocStringInheritor):
         s2 = u @ u / (n - k)
         s = sqrt(s2)
         gamma0 = s2 * (n - k) / n
-        sigma = resols.bse[0]
+        sigma, *_ = resols.bse
         sigma2 = sigma**2.0
         if sigma <= 0:
             raise InfeasibleTestException(
@@ -1129,22 +1146,20 @@ class PhillipsPerron(UnitRootTest, metaclass=AbstractDocStringInheritor):
                 "regression is 0. This may occur if the series contains constant "
                 "values or the residual variance in the regression is 0."
             )
-        rho = resols.params[0]
+        rho, *_ = resols.params
         # 3. Compute statistics
         self._stat_tau = sqrt(gamma0 / lam2) * ((rho - 1) / sigma) - 0.5 * (
             (lam2 - gamma0) / lam
         ) * (n * sigma / s)
-        self._stat_rho = n * (rho - 1) - 0.5 * (n**2.0 * sigma2 / s2) * (
-            lam2 - gamma0
-        )
+        self._stat_rho = n * (rho - 1) - 0.5 * (n**2.0 * sigma2 / s2) * (lam2 - gamma0)
 
         self._nobs = int(resols.nobs)
         if self._test_type == "rho":
             self._stat = self._stat_rho
-            dist_type = "ADF-z"
+            dist_type = "adf-z"
         else:
             self._stat = self._stat_tau
-            dist_type = "ADF-t"
+            dist_type = "adf-t"
         assert self._stat is not None
         self._pvalue = mackinnonp(self._stat, regression=trend, dist_type=dist_type)
         critical_values = mackinnoncrit(regression=trend, nobs=n, dist_type=dist_type)
@@ -1205,7 +1220,9 @@ class KPSS(UnitRootTest, metaclass=AbstractDocStringInheritor):
 
     The p-values and critical values were computed using an extensive
     simulation based on 100,000,000 replications using series with 2,000
-    observations.
+    observations. See [3]_ for the initial description of the KPSS test.
+    Further details are available in [2]_ and [5]_. Details about the long-run
+    covariance estimation can be found in [1]_ and [4]_.
 
     Examples
     --------
@@ -1215,38 +1232,38 @@ class KPSS(UnitRootTest, metaclass=AbstractDocStringInheritor):
     >>> data = sm.datasets.macrodata.load().data
     >>> inflation = np.diff(np.log(data["cpi"]))
     >>> kpss = KPSS(inflation)
-    >>> print("{0:0.4f}".format(kpss.stat))
+    >>> print(f"{kpss.stat:0.4f}")
     0.2870
-    >>> print("{0:0.4f}".format(kpss.pvalue))
+    >>> print(f"{kpss.pvalue:0.4f}")
     0.1473
     >>> kpss.trend = "ct"
-    >>> print("{0:0.4f}".format(kpss.stat))
+    >>> print(f"{kpss.stat:0.4f}")
     0.2075
-    >>> print("{0:0.4f}".format(kpss.pvalue))
+    >>> print(f"{kpss.pvalue:0.4f}")
     0.0128
 
     References
     ----------
-    .. [*] Andrews, D.W.K. (1991). "Heteroskedasticity and autocorrelation
+    .. [1] Andrews, D.W.K. (1991). "Heteroskedasticity and autocorrelation
            consistent covariance matrix estimation". Econometrica, 59: 817-858.
 
-    .. [*] Hobijn, B., Frances, B.H., & Ooms, M. (2004). Generalizations
+    .. [2] Hobijn, B., Frances, B.H., & Ooms, M. (2004). Generalizations
            of the KPSS-test for stationarity. Statistica Neerlandica, 52: 483-502.
 
-    .. [*] Kwiatkowski, D.; Phillips, P. C. B.; Schmidt, P.; Shin, Y. (1992).
+    .. [3] Kwiatkowski, D.; Phillips, P. C. B.; Schmidt, P.; Shin, Y. (1992).
            "Testing the null hypothesis of stationarity against the alternative of
            a unit root". Journal of Econometrics 54 (1-3), 159-178
 
-    .. [*] Newey, W.K., & West, K.D. (1994). "Automatic lag selection in
+    .. [4] Newey, W.K., & West, K.D. (1994). "Automatic lag selection in
            covariance matrix estimation". Review of Economic Studies, 61: 631-653.
 
-    .. [*] Schwert, G. W. (1989). "Tests for unit roots: A Monte Carlo
+    .. [5] Schwert, G. W. (1989). "Tests for unit roots: A Monte Carlo
            investigation". Journal of Business and Economic Statistics, 7 (2):
            147-159.
     """
 
     def __init__(
-        self, y: ArrayLike, lags: int | None = None, trend: Literal["c", "ct"] = "c"
+        self, y: ArrayLike, lags: Optional[int] = None, trend: Literal["c", "ct"] = "c"
     ) -> None:
         valid_trends = ("c", "ct")
         if lags is None:
@@ -1263,7 +1280,7 @@ class KPSS(UnitRootTest, metaclass=AbstractDocStringInheritor):
         self._test_name = "KPSS Stationarity Test"
         self._null_hypothesis = "The process is weakly stationary."
         self._alternative_hypothesis = "The process contains a unit root."
-        self._resids: ArrayLike1D | None = None
+        self._resids: Union[ArrayLike1D, None] = None
 
     def _check_specification(self) -> None:
         trend_order = len(self._trend)
@@ -1291,8 +1308,8 @@ class KPSS(UnitRootTest, metaclass=AbstractDocStringInheritor):
         if u.shape[0] < self._lags:
             raise InfeasibleTestException(
                 f"The number of observations {u.shape[0]} is less than the number of"
-                f"lags in the long-run covariance estimator, {self._lags}. You must have "
-                "lags <= nobs."
+                f"lags in the long-run covariance estimator, {self._lags}. You must "
+                "have lags <= nobs."
             )
         lam = cov_nw(u, self._lags, demean=False)
         s = cumsum(u)
@@ -1392,17 +1409,20 @@ class ZivotAndrews(UnitRootTest, metaclass=AbstractDocStringInheritor):
 
     No attempt has been made to characterize the size/power trade-off.
 
+    Based on the description in Zivot and Andrews [3]_. See [2]_ for
+    a general discussion of unit root tests. Code tested against Baum [1]_.
+
     References
     ----------
-    .. [*] Baum, C.F. (2004). ZANDREWS: Stata module to calculate Zivot-Andrews
+    .. [1] Baum, C.F. (2004). ZANDREWS: Stata module to calculate Zivot-Andrews
            unit root test in presence of structural break," Statistical Software
            Components S437301, Boston College Department of Economics, revised
            2015.
 
-    .. [*] Schwert, G.W. (1989). Tests for unit roots: A Monte Carlo
+    .. [2] Schwert, G.W. (1989). Tests for unit roots: A Monte Carlo
            investigation. Journal of Business & Economic Statistics, 7: 147-159.
 
-    .. [*] Zivot, E., and Andrews, D.W.K. (1992). Further evidence on the great
+    .. [3] Zivot, E., and Andrews, D.W.K. (1992). Further evidence on the great
            crash, the oil-price shock, and the unit-root hypothesis. Journal of
            Business & Economic Studies, 10: 251-270.
     """
@@ -1410,10 +1430,10 @@ class ZivotAndrews(UnitRootTest, metaclass=AbstractDocStringInheritor):
     def __init__(
         self,
         y: ArrayLike,
-        lags: int | None = None,
+        lags: Optional[int] = None,
         trend: Literal["c", "ct", "t"] = "c",
         trim: float = 0.15,
-        max_lags: int | None = None,
+        max_lags: Optional[int] = None,
         method: Literal["aic", "bic", "t-stat"] = "aic",
     ) -> None:
         super().__init__(y, lags, trend, ("c", "t", "ct"))
@@ -1586,6 +1606,7 @@ class VarianceRatio(UnitRootTest, metaclass=AbstractDocStringInheritor):
     The null hypothesis of a VR is that the process is a random walk, possibly
     plus drift.  Rejection of the null with a positive test statistic
     indicates the presence of positive serial correlation in the time series.
+    See [1]_ for details about variance ratio testing.
 
     Examples
     --------
@@ -1594,12 +1615,12 @@ class VarianceRatio(UnitRootTest, metaclass=AbstractDocStringInheritor):
     >>> data = pdr.get_data_fred("DJIA", start="2010-1-1", end="2020-12-31")
     >>> data = np.log(data.resample("M").last())  # End of month
     >>> vr = VarianceRatio(data, lags=12)
-    >>> print("{0:0.4f}".format(vr.pvalue))
+    >>> print(f"{vr.pvalue:0.4f}")
     0.1370
 
     References
     ----------
-    .. [*] Campbell, John Y., Lo, Andrew W. and MacKinlay, A. Craig. (1997) The
+    .. [1] Campbell, John Y., Lo, Andrew W. and MacKinlay, A. Craig. (1997) The
        Econometrics of Financial Markets. Princeton, NJ: Princeton University
        Press.
     """
@@ -1623,8 +1644,8 @@ class VarianceRatio(UnitRootTest, metaclass=AbstractDocStringInheritor):
         self._robust = robust
         self._debiased = debiased
         self._overlap = overlap
-        self._vr: float | None = None
-        self._stat_variance: float | None = None
+        self._vr: Optional[float] = None
+        self._stat_variance: Optional[float] = None
         quantiles = array([0.01, 0.05, 0.1, 0.9, 0.95, 0.99])
         for q, cv in zip(quantiles, norm.ppf(quantiles)):
             self._critical_values[str(int(100 * q)) + "%"] = cv
@@ -1927,7 +1948,7 @@ def kpss_crit(
 
 
 def auto_bandwidth(
-    y: Sequence[float | int] | ArrayLike1D,
+    y: Union[Sequence[Union[float, int]], ArrayLike1D],
     kernel: Literal[
         "ba", "bartlett", "nw", "pa", "parzen", "gallant", "qs", "andrews"
     ] = "ba",
@@ -1951,8 +1972,8 @@ def auto_bandwidth(
     float
         The estimated optimal bandwidth.
     """
-    y = ensure1d(y, "y")
-    if y.shape[0] < 2:
+    y_arr = ensure1d(y, "y")
+    if y_arr.shape[0] < 2:
         raise ValueError("Data must contain more than one observation")
 
     lower_kernel = kernel.lower()
@@ -1968,12 +1989,12 @@ def auto_bandwidth(
     else:
         raise ValueError("Unknown kernel")
 
-    n = int(4 * ((len(y) / 100) ** n_power))
+    n = int(4 * ((len(y_arr) / 100) ** n_power))
     sig = (n + 1) * [0]
 
     for i in range(n + 1):
-        a = list(y[i:])
-        b = list(y[: len(y) - i])
+        a = list(y_arr[i:])
+        b = list(y_arr[: len(y_arr) - i])
         sig[i] = int(npsum([i * j for (i, j) in zip(a, b)]))
 
     sigma_m1 = sig[1 : len(sig)]  # sigma without the 1st element
@@ -1999,6 +2020,6 @@ def auto_bandwidth(
         else:  # kernel == "qs":
             gamma = 1.3221 * (((s2 / s0) ** 2) ** t_power)
 
-    bandwidth = gamma * power(len(y), t_power)
+    bandwidth = gamma * power(len(y_arr), t_power)
 
     return bandwidth

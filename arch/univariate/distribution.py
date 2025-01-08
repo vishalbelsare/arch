@@ -2,10 +2,10 @@
 Distributions to use in ARCH models.  All distributions must inherit from
 :class:`Distribution` and provide the same methods with the same inputs.
 """
-from __future__ import annotations
 
 from abc import ABCMeta, abstractmethod
-from typing import Callable, Sequence
+from collections.abc import Sequence
+from typing import Callable, Optional, Union
 import warnings
 
 from numpy import (
@@ -43,17 +43,17 @@ class Distribution(metaclass=ABCMeta):
 
     def __init__(
         self,
-        random_state: RandomState | None = None,
+        random_state: Optional[RandomState] = None,
         *,
-        seed: None | int | RandomState | Generator = None,
+        seed: Union[int, RandomState, Generator, None] = None,
     ) -> None:
         self._name = "Distribution"
         self.num_params: int = 0
-        self._parameters: Float64Array | None = None
+        self._parameters: Optional[Float64Array] = None
         if random_state is not None:
             if seed is not None:
                 raise ValueError(
-                    "seed cannot be simultantoulsy used with random_state. Use "
+                    "seed cannot be simultaneously used with random_state. Use "
                     "seed to future proof your code."
                 )
             if not isinstance(random_state, RandomState):
@@ -65,11 +65,11 @@ class Distribution(metaclass=ABCMeta):
                 "Use seed instead.",
                 FutureWarning,
             )
-            _seed: None | RandomState | Generator | int = random_state
+            _seed: Union[int, RandomState, Generator, None] = random_state
         else:
             _seed = seed
         if _seed is None:
-            self._generator: Generator | RandomState = default_rng()
+            self._generator: Union[Generator, RandomState] = default_rng()
         elif isinstance(_seed, (int, integer)):
             self._generator = default_rng(_seed)
         elif isinstance(_seed, (RandomState, Generator)):
@@ -85,7 +85,7 @@ class Distribution(metaclass=ABCMeta):
         return self._name
 
     def _check_constraints(
-        self, parameters: None | Sequence[float] | ArrayLike1D
+        self, parameters: Union[Sequence[float], ArrayLike1D, None]
     ) -> Float64Array:
         bounds = self.bounds(empty(0))
         if parameters is not None:
@@ -101,18 +101,18 @@ class Distribution(metaclass=ABCMeta):
         for p, n, b in zip(params, self.name, bounds):
             if not (b[0] <= p <= b[1]):
                 raise ValueError(
-                    "{} does not satisfy the bounds requirement "
-                    "of ({}, {})".format(n, *b)
+                    f"{n} does not satisfy the bounds requirement of "
+                    f"({b[0]}, {b[1]})"
                 )
         return asarray(params)
 
     @property
-    def generator(self) -> RandomState | Generator:
+    def generator(self) -> Union[RandomState, Generator]:
         """The NumPy Generator or RandomState attached to the distribution"""
         return self._generator
 
     @property
-    def random_state(self) -> RandomState | Generator:
+    def random_state(self) -> Union[RandomState, Generator]:
         """
         The NumPy RandomState attached to the distribution
 
@@ -128,7 +128,7 @@ class Distribution(metaclass=ABCMeta):
         return self._generator
 
     @abstractmethod
-    def _simulator(self, size: int | tuple[int, ...]) -> Float64Array:
+    def _simulator(self, size: Union[int, tuple[int, ...]]) -> Float64Array:
         """
         Simulate i.i.d. draws from the distribution
 
@@ -149,8 +149,8 @@ class Distribution(metaclass=ABCMeta):
 
     @abstractmethod
     def simulate(
-        self, parameters: int | float | Sequence[float | int] | ArrayLike1D
-    ) -> Callable[[int | tuple[int, ...]], Float64Array]:
+        self, parameters: Union[int, float, Sequence[Union[float, int]], ArrayLike1D]
+    ) -> Callable[[Union[int, tuple[int, ...]]], Float64Array]:
         """
         Simulates i.i.d. draws from the distribution
 
@@ -202,11 +202,11 @@ class Distribution(metaclass=ABCMeta):
     @abstractmethod
     def loglikelihood(
         self,
-        parameters: Sequence[float] | ArrayLike1D,
+        parameters: Union[Sequence[float], ArrayLike1D],
         resids: ArrayLike,
         sigma2: ArrayLike,
         individual: bool = False,
-    ) -> float | Float64Array:
+    ) -> Union[float, Float64Array]:
         """
         Loglikelihood evaluation.
 
@@ -263,9 +263,9 @@ class Distribution(metaclass=ABCMeta):
     @abstractmethod
     def ppf(
         self,
-        pits: float | Sequence[float] | ArrayLike1D,
-        parameters: None | Sequence[float] | ArrayLike1D = None,
-    ) -> float | Float64Array:
+        pits: Union[float, Sequence[float], ArrayLike1D],
+        parameters: Union[Sequence[float], ArrayLike1D, None] = None,
+    ) -> Union[float, Float64Array]:
         """
         Inverse cumulative density function (ICDF)
 
@@ -286,8 +286,8 @@ class Distribution(metaclass=ABCMeta):
     @abstractmethod
     def cdf(
         self,
-        resids: Sequence[float] | ArrayLike1D,
-        parameters: None | Sequence[float] | ArrayLike1D = None,
+        resids: Union[Sequence[float], ArrayLike1D],
+        parameters: Union[Sequence[float], ArrayLike1D, None] = None,
     ) -> Float64Array:
         """
         Cumulative distribution function
@@ -308,7 +308,7 @@ class Distribution(metaclass=ABCMeta):
 
     @abstractmethod
     def moment(
-        self, n: int, parameters: None | Sequence[float] | ArrayLike1D = None
+        self, n: int, parameters: Union[Sequence[float], ArrayLike1D, None] = None
     ) -> float:
         """
         Moment of order n
@@ -331,7 +331,7 @@ class Distribution(metaclass=ABCMeta):
         self,
         n: int,
         z: float = 0.0,
-        parameters: None | Sequence[float] | ArrayLike1D = None,
+        parameters: Union[Sequence[float], ArrayLike1D, None] = None,
     ) -> float:
         r"""
         Order n lower partial moment from -inf to z
@@ -396,9 +396,9 @@ class Normal(Distribution, metaclass=AbstractDocStringInheritor):
 
     def __init__(
         self,
-        random_state: RandomState | None = None,
+        random_state: Optional[RandomState] = None,
         *,
-        seed: None | int | RandomState | Generator = None,
+        seed: Union[None, int, RandomState, Generator] = None,
     ) -> None:
         super().__init__(random_state=random_state, seed=seed)
         self._name = "Normal"
@@ -411,11 +411,11 @@ class Normal(Distribution, metaclass=AbstractDocStringInheritor):
 
     def loglikelihood(
         self,
-        parameters: Sequence[float] | ArrayLike1D,
+        parameters: Union[Sequence[float], ArrayLike1D],
         resids: ArrayLike,
         sigma2: ArrayLike,
         individual: bool = False,
-    ) -> float | Float64Array:
+    ) -> Union[float, Float64Array]:
         r"""Computes the log-likelihood of assuming residuals are normally
         distributed, conditional on the variance
 
@@ -447,7 +447,7 @@ class Normal(Distribution, metaclass=AbstractDocStringInheritor):
             +\frac{x^{2}}{\sigma^{2}}\right)
 
         """
-        lls = -0.5 * (log(2 * pi) + log(sigma2) + resids ** 2.0 / sigma2)
+        lls = -0.5 * (log(2 * pi) + log(sigma2) + resids**2.0 / sigma2)
         if individual:
             return lls
         else:
@@ -456,12 +456,12 @@ class Normal(Distribution, metaclass=AbstractDocStringInheritor):
     def starting_values(self, std_resid: Float64Array) -> Float64Array:
         return empty(0)
 
-    def _simulator(self, size: int | tuple[int, ...]) -> Float64Array:
+    def _simulator(self, size: Union[int, tuple[int, ...]]) -> Float64Array:
         return self._generator.standard_normal(size)
 
     def simulate(
-        self, parameters: int | float | Sequence[float | int] | ArrayLike1D
-    ) -> Callable[[int | tuple[int, ...]], Float64Array]:
+        self, parameters: Union[int, float, Sequence[Union[float, int]], ArrayLike1D]
+    ) -> Callable[[Union[int, tuple[int, ...]]], Float64Array]:
         return self._simulator
 
     def parameter_names(self) -> list[str]:
@@ -469,16 +469,16 @@ class Normal(Distribution, metaclass=AbstractDocStringInheritor):
 
     def cdf(
         self,
-        resids: Sequence[float] | ArrayLike1D,
-        parameters: None | Sequence[float] | ArrayLike1D = None,
+        resids: Union[Sequence[float], ArrayLike1D],
+        parameters: Union[Sequence[float], ArrayLike1D, None] = None,
     ) -> Float64Array:
         self._check_constraints(parameters)
         return stats.norm.cdf(asarray(resids))
 
     def ppf(
         self,
-        pits: float | Sequence[float] | ArrayLike1D,
-        parameters: None | Sequence[float] | ArrayLike1D = None,
+        pits: Union[float, Sequence[float], ArrayLike1D],
+        parameters: Union[Sequence[float], ArrayLike1D, None] = None,
     ) -> Float64Array:
         self._check_constraints(parameters)
         scalar = isscalar(pits)
@@ -493,7 +493,7 @@ class Normal(Distribution, metaclass=AbstractDocStringInheritor):
             return ppf
 
     def moment(
-        self, n: int, parameters: None | Sequence[float] | ArrayLike1D = None
+        self, n: int, parameters: Union[Sequence[float], ArrayLike1D, None] = None
     ) -> float:
         if n < 0:
             return nan
@@ -504,7 +504,7 @@ class Normal(Distribution, metaclass=AbstractDocStringInheritor):
         self,
         n: int,
         z: float = 0.0,
-        parameters: None | Sequence[float] | ArrayLike1D = None,
+        parameters: Union[Sequence[float], ArrayLike1D, None] = None,
     ) -> float:
         if n < 0:
             return nan
@@ -538,9 +538,9 @@ class StudentsT(Distribution, metaclass=AbstractDocStringInheritor):
 
     def __init__(
         self,
-        random_state: RandomState | None = None,
+        random_state: Optional[RandomState] = None,
         *,
-        seed: None | int | RandomState | Generator = None,
+        seed: Union[None, int, RandomState, Generator] = None,
     ) -> None:
         super().__init__(random_state=random_state, seed=seed)
         self._name = "Standardized Student's t"
@@ -554,11 +554,11 @@ class StudentsT(Distribution, metaclass=AbstractDocStringInheritor):
 
     def loglikelihood(
         self,
-        parameters: Sequence[float] | ArrayLike1D,
+        parameters: Union[Sequence[float], ArrayLike1D],
         resids: ArrayLike,
         sigma2: ArrayLike,
         individual: bool = False,
-    ) -> float | Float64Array:
+    ) -> Union[float, Float64Array]:
         r"""Computes the log-likelihood of assuming residuals are have a
         standardized (to have unit variance) Student's t distribution,
         conditional on the variance.
@@ -596,7 +596,7 @@ class StudentsT(Distribution, metaclass=AbstractDocStringInheritor):
         nu = parameters[0]
         lls = gammaln((nu + 1) / 2) - gammaln(nu / 2) - log(pi * (nu - 2)) / 2
         lls -= 0.5 * (log(sigma2))
-        lls -= ((nu + 1) / 2) * (log(1 + (resids ** 2.0) / (sigma2 * (nu - 2))))
+        lls -= ((nu + 1) / 2) * (log(1 + (resids**2.0) / (sigma2 * (nu - 2))))
 
         if individual:
             return lls
@@ -627,15 +627,15 @@ class StudentsT(Distribution, metaclass=AbstractDocStringInheritor):
         sv = max((4.0 * k - 6.0) / (k - 3.0) if k > 3.75 else 12.0, 4.0)
         return array([sv])
 
-    def _simulator(self, size: int | tuple[int, ...]) -> Float64Array:
+    def _simulator(self, size: Union[int, tuple[int, ...]]) -> Float64Array:
         assert self._parameters is not None
         parameters = self._parameters
         std_dev = sqrt(parameters[0] / (parameters[0] - 2))
         return self._generator.standard_t(self._parameters[0], size=size) / std_dev
 
     def simulate(
-        self, parameters: int | float | Sequence[float | int] | ArrayLike1D
-    ) -> Callable[[int | tuple[int, ...]], Float64Array]:
+        self, parameters: Union[int, float, Sequence[Union[float, int]], ArrayLike1D]
+    ) -> Callable[[Union[int, tuple[int, ...]]], Float64Array]:
         parameters = ensure1d(parameters, "parameters", False)
         if parameters[0] <= 2.0:
             raise ValueError("The shape parameter must be larger than 2")
@@ -647,8 +647,8 @@ class StudentsT(Distribution, metaclass=AbstractDocStringInheritor):
 
     def cdf(
         self,
-        resids: Sequence[float] | ArrayLike1D,
-        parameters: None | Sequence[float] | ArrayLike1D = None,
+        resids: Union[Sequence[float], ArrayLike1D],
+        parameters: Union[Sequence[float], ArrayLike1D, None] = None,
     ) -> Float64Array:
         parameters = self._check_constraints(parameters)
         nu = parameters[0]
@@ -657,8 +657,8 @@ class StudentsT(Distribution, metaclass=AbstractDocStringInheritor):
 
     def ppf(
         self,
-        pits: float | Sequence[float] | ArrayLike1D,
-        parameters: None | Sequence[float] | ArrayLike1D = None,
+        pits: Union[float, Sequence[float], ArrayLike1D],
+        parameters: Union[Sequence[float], ArrayLike1D, None] = None,
     ) -> Float64Array:
         parameters = self._check_constraints(parameters)
         pits = asarray(pits, dtype=float)
@@ -667,7 +667,7 @@ class StudentsT(Distribution, metaclass=AbstractDocStringInheritor):
         return stats.t(nu, scale=1.0 / sqrt(var)).ppf(pits)
 
     def moment(
-        self, n: int, parameters: None | Sequence[float] | ArrayLike1D = None
+        self, n: int, parameters: Union[Sequence[float], ArrayLike1D, None] = None
     ) -> float:
         if n < 0:
             return nan
@@ -680,13 +680,13 @@ class StudentsT(Distribution, metaclass=AbstractDocStringInheritor):
         self,
         n: int,
         z: float = 0.0,
-        parameters: None | Sequence[float] | ArrayLike1D = None,
+        parameters: Union[Sequence[float], ArrayLike1D, None] = None,
     ) -> float:
         parameters = self._check_constraints(parameters)
         nu = parameters[0]
         var = nu / (nu - 2)
         scale = 1.0 / sqrt(var)
-        moment = (scale ** n) * self._ord_t_partial_moment(n, z / scale, nu)
+        moment = (scale**n) * self._ord_t_partial_moment(n, z / scale, nu)
         return moment
 
     @staticmethod
@@ -730,9 +730,9 @@ class StudentsT(Distribution, metaclass=AbstractDocStringInheritor):
         elif n == 1:
             c = gamma(0.5 * (nu + 1)) / (sqrt(nu * pi) * gamma(0.5 * nu))
             e = 0.5 * (nu + 1)
-            moment = (0.5 * (c * nu) / (1 - e)) * ((1 + (z ** 2) / nu) ** (1 - e))
+            moment = (0.5 * (c * nu) / (1 - e)) * ((1 + (z**2) / nu) ** (1 - e))
         else:
-            t1 = (z ** (n - 1)) * (nu + z ** 2) * stats.t.pdf(z, nu)
+            t1 = (z ** (n - 1)) * (nu + z**2) * stats.t.pdf(z, nu)
             t2 = (n - 1) * nu * StudentsT._ord_t_partial_moment(n - 2, z, nu)
             moment = (1 / (n - nu)) * (t1 - t2)
         return moment
@@ -773,9 +773,9 @@ class SkewStudent(Distribution, metaclass=AbstractDocStringInheritor):
 
     def __init__(
         self,
-        random_state: RandomState | None = None,
+        random_state: Optional[RandomState] = None,
         *,
-        seed: None | int | RandomState | Generator = None,
+        seed: Union[None, int, RandomState, Generator] = None,
     ) -> None:
         super().__init__(random_state=random_state, seed=seed)
         self._name = "Standardized Skew Student's t"
@@ -789,7 +789,7 @@ class SkewStudent(Distribution, metaclass=AbstractDocStringInheritor):
 
     def loglikelihood(
         self,
-        parameters: Sequence[float] | ArrayLike1D,
+        parameters: Union[Sequence[float], ArrayLike1D],
         resids: ArrayLike,
         sigma2: ArrayLike,
         individual: bool = False,
@@ -847,7 +847,7 @@ class SkewStudent(Distribution, metaclass=AbstractDocStringInheritor):
         const_a = self.__const_a(parameters)
         const_b = self.__const_b(parameters)
 
-        resids = resids / sigma2 ** 0.5
+        resids = resids / sigma2**0.5
         lls = log(const_b) + const_c - log(sigma2) / 2
         if abs(lam) >= 1.0:
             lam = sign(lam) * (1.0 - 1e-6)
@@ -885,7 +885,7 @@ class SkewStudent(Distribution, metaclass=AbstractDocStringInheritor):
         sv = max((4.0 * k - 6.0) / (k - 3.0) if k > 3.75 else 12.0, 4.0)
         return array([sv, 0.0])
 
-    def _simulator(self, size: int | tuple[int, ...]) -> Float64Array:
+    def _simulator(self, size: Union[int, tuple[int, ...]]) -> Float64Array:
         # No need to normalize since it is already done in parameterization
         assert self._parameters is not None
         if isinstance(self._generator, Generator):
@@ -897,8 +897,8 @@ class SkewStudent(Distribution, metaclass=AbstractDocStringInheritor):
         return ppf
 
     def simulate(
-        self, parameters: int | float | Sequence[float | int] | ArrayLike1D
-    ) -> Callable[[int | tuple[int, ...]], Float64Array]:
+        self, parameters: Union[int, float, Sequence[Union[float, int]], ArrayLike1D]
+    ) -> Callable[[Union[int, tuple[int, ...]]], Float64Array]:
         parameters = ensure1d(parameters, "parameters", False)
         if parameters[0] <= 2.0:
             raise ValueError("The shape parameter must be larger than 2")
@@ -912,7 +912,7 @@ class SkewStudent(Distribution, metaclass=AbstractDocStringInheritor):
     def parameter_names(self) -> list[str]:
         return ["eta", "lambda"]
 
-    def __const_a(self, parameters: Float64Array | Sequence[float]) -> float:
+    def __const_a(self, parameters: Union[Float64Array, Sequence[float]]) -> float:
         """
         Compute a constant.
 
@@ -931,7 +931,7 @@ class SkewStudent(Distribution, metaclass=AbstractDocStringInheritor):
         c = self.__const_c(parameters)
         return float(4 * lam * exp(c) * (eta - 2) / (eta - 1))
 
-    def __const_b(self, parameters: Float64Array | Sequence[float]) -> float:
+    def __const_b(self, parameters: Union[Float64Array, Sequence[float]]) -> float:
         """
         Compute b constant.
 
@@ -947,10 +947,10 @@ class SkewStudent(Distribution, metaclass=AbstractDocStringInheritor):
         """
         lam = float(parameters[1])
         a = self.__const_a(parameters)
-        return (1 + 3 * lam ** 2 - a ** 2) ** 0.5
+        return (1 + 3 * lam**2 - a**2) ** 0.5
 
     @staticmethod
-    def __const_c(parameters: Float64Array | Sequence[float]) -> float:
+    def __const_c(parameters: Union[Float64Array, Sequence[float]]) -> float:
         """
         Compute c constant.
 
@@ -972,8 +972,8 @@ class SkewStudent(Distribution, metaclass=AbstractDocStringInheritor):
 
     def cdf(
         self,
-        resids: Sequence[float] | ArrayLike1D,
-        parameters: None | Sequence[float] | ArrayLike1D = None,
+        resids: Union[Sequence[float], ArrayLike1D],
+        parameters: Union[Sequence[float], ArrayLike1D, None] = None,
     ) -> Float64Array:
         parameters = self._check_constraints(parameters)
         scalar = isscalar(resids)
@@ -998,9 +998,9 @@ class SkewStudent(Distribution, metaclass=AbstractDocStringInheritor):
 
     def ppf(
         self,
-        pits: float | Sequence[float] | ArrayLike1D,
-        parameters: None | Sequence[float] | ArrayLike1D = None,
-    ) -> float | Float64Array:
+        pits: Union[float, Sequence[float], ArrayLike1D],
+        parameters: Union[Sequence[float], ArrayLike1D, None] = None,
+    ) -> Union[float, Float64Array]:
         parameters = self._check_constraints(parameters)
         scalar = isscalar(pits)
         if scalar:
@@ -1028,7 +1028,7 @@ class SkewStudent(Distribution, metaclass=AbstractDocStringInheritor):
         return icdf
 
     def moment(
-        self, n: int, parameters: None | Sequence[float] | ArrayLike1D = None
+        self, n: int, parameters: Union[Sequence[float], ArrayLike1D, None] = None
     ) -> float:
         parameters = self._check_constraints(parameters)
         eta, lam = parameters
@@ -1053,8 +1053,8 @@ class SkewStudent(Distribution, metaclass=AbstractDocStringInheritor):
             )
             l_pmom = ((-1) ** k) * r_pmom
 
-            lhs = (1 - lam) * (lscale ** k) * (loc ** (n - k)) * l_pmom
-            rhs = (1 + lam) * (rscale ** k) * (loc ** (n - k)) * r_pmom
+            lhs = (1 - lam) * (lscale**k) * (loc ** (n - k)) * l_pmom
+            rhs = (1 + lam) * (rscale**k) * (loc ** (n - k)) * r_pmom
             moment += comb(n, k) * (lhs + rhs)
 
         return moment
@@ -1063,7 +1063,7 @@ class SkewStudent(Distribution, metaclass=AbstractDocStringInheritor):
         self,
         n: int,
         z: float = 0.0,
-        parameters: None | Sequence[float] | ArrayLike1D = None,
+        parameters: Union[Sequence[float], ArrayLike1D, None] = None,
     ) -> float:
         parameters = self._check_constraints(parameters)
         eta, lam = parameters
@@ -1084,7 +1084,7 @@ class SkewStudent(Distribution, metaclass=AbstractDocStringInheritor):
             lhs = (
                 (1 - lam)
                 * (loc ** (n - k))
-                * (lscale ** k)
+                * (lscale**k)
                 * StudentsT._ord_t_partial_moment(k, z=(lbound - loc) / lscale, nu=eta)
             )
 
@@ -1092,7 +1092,7 @@ class SkewStudent(Distribution, metaclass=AbstractDocStringInheritor):
                 rhs = (
                     (1 + lam)
                     * (loc ** (n - k))
-                    * (rscale ** k)
+                    * (rscale**k)
                     * (
                         StudentsT._ord_t_partial_moment(k, z=(z - loc) / rscale, nu=eta)
                         - StudentsT._ord_t_partial_moment(k, z=0.0, nu=eta)
@@ -1126,9 +1126,9 @@ class GeneralizedError(Distribution, metaclass=AbstractDocStringInheritor):
 
     def __init__(
         self,
-        random_state: RandomState | None = None,
+        random_state: Optional[RandomState] = None,
         *,
-        seed: None | int | RandomState | Generator = None,
+        seed: Union[None, int, RandomState, Generator] = None,
     ) -> None:
         super().__init__(random_state=random_state, seed=seed)
         self._name = "Generalized Error Distribution"
@@ -1142,7 +1142,7 @@ class GeneralizedError(Distribution, metaclass=AbstractDocStringInheritor):
 
     def loglikelihood(
         self,
-        parameters: Sequence[float] | ArrayLike1D,
+        parameters: Union[Sequence[float], ArrayLike1D],
         resids: ArrayLike,
         sigma2: ArrayLike,
         individual: bool = False,
@@ -1218,7 +1218,7 @@ class GeneralizedError(Distribution, metaclass=AbstractDocStringInheritor):
         """
         return array([1.5])
 
-    def _simulator(self, size: int | tuple[int, ...]) -> Float64Array:
+    def _simulator(self, size: Union[int, tuple[int, ...]]) -> Float64Array:
         assert self._parameters is not None
         parameters = self._parameters
         nu = parameters[0]
@@ -1233,8 +1233,8 @@ class GeneralizedError(Distribution, metaclass=AbstractDocStringInheritor):
         return randoms / scale
 
     def simulate(
-        self, parameters: int | float | Sequence[float | int] | ArrayLike1D
-    ) -> Callable[[int | tuple[int, ...]], Float64Array]:
+        self, parameters: Union[int, float, Sequence[Union[float, int]], ArrayLike1D]
+    ) -> Callable[[Union[int, tuple[int, ...]]], Float64Array]:
         parameters = ensure1d(parameters, "parameters", False)
         if parameters[0] <= 1.0:
             raise ValueError("The shape parameter must be larger than 1")
@@ -1246,8 +1246,8 @@ class GeneralizedError(Distribution, metaclass=AbstractDocStringInheritor):
 
     def ppf(
         self,
-        pits: float | Sequence[float] | ArrayLike1D,
-        parameters: None | Sequence[float] | ArrayLike1D = None,
+        pits: Union[float, Sequence[float], ArrayLike1D],
+        parameters: Union[Sequence[float], ArrayLike1D, None] = None,
     ) -> Float64Array:
         parameters = self._check_constraints(parameters)
         pits = asarray(pits, dtype=float)
@@ -1257,8 +1257,8 @@ class GeneralizedError(Distribution, metaclass=AbstractDocStringInheritor):
 
     def cdf(
         self,
-        resids: Sequence[float] | ArrayLike1D,
-        parameters: None | Sequence[float] | ArrayLike1D = None,
+        resids: Union[Sequence[float], ArrayLike1D],
+        parameters: Union[Sequence[float], ArrayLike1D, None] = None,
     ) -> Float64Array:
         parameters = self._check_constraints(parameters)
         nu = parameters[0]
@@ -1267,7 +1267,7 @@ class GeneralizedError(Distribution, metaclass=AbstractDocStringInheritor):
         return stats.gennorm(nu, scale=1.0 / sqrt(var)).cdf(resids)
 
     def moment(
-        self, n: int, parameters: None | Sequence[float] | ArrayLike1D = None
+        self, n: int, parameters: Union[Sequence[float], ArrayLike1D, None] = None
     ) -> float:
         if n < 0:
             return nan
@@ -1281,12 +1281,12 @@ class GeneralizedError(Distribution, metaclass=AbstractDocStringInheritor):
         self,
         n: int,
         z: float = 0.0,
-        parameters: None | Sequence[float] | ArrayLike1D = None,
+        parameters: Union[Sequence[float], ArrayLike1D, None] = None,
     ) -> float:
         parameters = self._check_constraints(parameters)
         nu = parameters[0]
         scale = 1.0 / sqrt(stats.gennorm(nu).var())
-        moment = (scale ** n) * self._ord_gennorm_partial_moment(n, z / scale, nu)
+        moment = (scale**n) * self._ord_gennorm_partial_moment(n, z / scale, nu)
         return moment
 
     @staticmethod

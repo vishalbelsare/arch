@@ -1,8 +1,25 @@
+import logging
+import os
+
+import pandas as pd
 import pytest
 
 pytest_plugins = [
     "arch.tests.unitroot.cointegration_data",
 ]
+
+
+logger = logging.getLogger(__name__)
+COW = bool(os.environ.get("ARCH_TEST_COPY_ON_WRITE", False))
+try:
+    pd.options.mode.copy_on_write = COW
+except AttributeError:
+    pass
+
+if COW:
+    logger.critical("Copy on Write Enabled!")
+else:
+    logger.critical("Copy on Write disabled")
 
 
 def pytest_configure(config):

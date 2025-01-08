@@ -1,10 +1,8 @@
-from __future__ import annotations
-
 from collections import defaultdict
 import glob
 from itertools import product
 import os
-from typing import Dict, List, NamedTuple, Tuple, cast
+from typing import NamedTuple, Union, cast
 
 from black import FileMode, TargetVersion, format_file_contents
 import matplotlib.backends.backend_pdf
@@ -20,14 +18,14 @@ from statsmodels.regression.linear_model import OLS, WLS
 META = {"z_a": "negative", "z_t": "negative", "p_u": "positive", "p_z": "positive"}
 CRITICAL_VALUES = (1, 5, 10)
 PLOT = False
-WINS: Dict[int, int] = defaultdict(lambda: 0)
+WINS: dict[int, int] = defaultdict(int)
 # 1. Load data
 # 2. Compute critical values
 
 
 class PvalueResult(NamedTuple):
-    large_p: List[float]
-    small_p: List[float]
+    large_p: list[float]
+    small_p: list[float]
     tau_max: float
     tau_star: float
     tau_min: float
@@ -75,7 +73,7 @@ def xval(lhs: np.ndarray, rhs: np.ndarray, log: bool = True, folds: int = 5) -> 
 
 def estimate_cv_regression(
     results: pd.DataFrame, statistic: str
-) -> Tuple[Dict[int, List[float]], float]:
+) -> tuple[dict[int, list[float]], float]:
     # For percentiles 1, 5 and 10, regress on a constant, and powers of 1/T
     out = {}
     quantiles = np.asarray(results.index)
@@ -96,7 +94,7 @@ def estimate_cv_regression(
     return out, float(tau.min())
 
 
-def fit_pval_model(quantiles: pd.DataFrame | pd.Series) -> PvalueResult:
+def fit_pval_model(quantiles: Union[pd.DataFrame, pd.Series]) -> PvalueResult:
     percentiles = quantiles.index.to_numpy()
     lhs = stats.norm.ppf(percentiles)
     data = np.asarray(quantiles)
@@ -217,33 +215,35 @@ for multi_key in product(STATISTICS, ALL_TRENDS, NSTOCHASTICS):
     pval_data[multi_key] = final[multi_key].loc[:, 2000]  # type: ignore
     # TODO: Bug in pandas-stubs prevents valid index types
     temp_series = final[multi_key].loc[:, 2000].mean(1)  # type: ignore
-    temp_series.name = multi_key[-1]
+    # This is a series since there are many columns with 2000
+    temp_series.name = multi_key[-1]  # type: ignore
     quantiles_d[multi_key[:-1]].append(temp_series)
 quantiles = {}
 for key in quantiles_d:
-    quantiles[key] = pd.concat(quantiles_d[key], axis=1)
+    selected = cast(np.ndarray, quantiles_d[key])
+    quantiles[key] = pd.concat(selected, axis=1)
 
 
 plt.rc("figure", figsize=(16, 8))
 sns.set_style("darkgrid")
 pdf = matplotlib.backends.backend_pdf.PdfPages("output.pdf")
-for key in quantiles:
-    temp = quantiles[key]
+for quantile_key in quantiles:
+    temp = quantiles[quantile_key]
     y = temp.index.to_numpy()[:, None]
     x = temp.to_numpy()
-    stat = key[0]
+    stat = quantile_key[0]
     if stat in ("z_t", "z_a"):
         x = -1 * x
     if stat in ("p_u", "p_z"):
         y = 1 - y
     fig, ax = plt.subplots(1, 1)
     plt.plot(x, y)
-    plt.title(key)
+    plt.title(", ".join(quantile_key))
     pdf.savefig(fig)
     if stat in ("p_u", "p_z"):
         fig, ax = plt.subplots(1, 1)
         plt.plot(np.log(x), y)
-        plt.title(f"Log {key[0]}, {key[1]}")
+        plt.title(f"Log {quantile_key[0]}, {quantile_key[1]}")
         pdf.savefig(fig)
 pdf.close()
 

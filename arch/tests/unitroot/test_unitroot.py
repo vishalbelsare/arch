@@ -15,7 +15,12 @@ import pytest
 import scipy.stats as stats
 from statsmodels.datasets import macrodata, modechoice, nile, randhie, sunspots
 from statsmodels.regression.linear_model import OLS
-from statsmodels.tsa.stattools import _autolag, lagmat
+from statsmodels.tsa.stattools import lagmat
+
+try:
+    from statsmodels.tsa.stattools import _autolag
+except ImportError:
+    from statsmodels.tsa.stattools._stattools import _autolag
 
 from arch.unitroot import ADF, DFGLS, KPSS, PhillipsPerron, VarianceRatio, ZivotAndrews
 from arch.unitroot.critical_values.dickey_fuller import tau_2010
@@ -27,7 +32,7 @@ from arch.unitroot.unitroot import (
     mackinnoncrit,
     mackinnonp,
 )
-from arch.utility.exceptions import InfeasibleTestException
+from arch.utility.exceptions import InfeasibleTestException, PerformanceWarning
 
 DECIMAL_5 = 5
 DECIMAL_4 = 4
@@ -727,3 +732,9 @@ def test_autolag_ols_low_memory_smoke(trend, method):
     data = dataset_loader(macrodata)
     realgdp = np.log(data["realgdp"])
     _autolag_ols_low_memory(realgdp, maxlag=4, trend=trend, method=method)
+
+
+def test_autolag_warning():
+    y = np.random.standard_normal(1000000)
+    with pytest.warns(PerformanceWarning, match=""):
+        assert isinstance(ADF(y).stat, float)

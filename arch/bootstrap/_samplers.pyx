@@ -1,12 +1,12 @@
 #!python
-#cython: language_level=3, boundscheck=False, wraparound=False, cdivision=True, binding=True
+
 
 import numpy as np
 
-cimport cython
 cimport numpy as np
 
 np.import_array()
+
 
 def stationary_bootstrap_sample(np.int64_t[:] indices,
                                 double[:] u,

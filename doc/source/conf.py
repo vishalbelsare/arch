@@ -9,17 +9,10 @@
 import glob
 import os
 import shutil
-from typing import Dict, List
 
 from packaging.version import parse
 
 import arch
-
-on_rtd = os.environ.get("READTHEDOCS", None) == "True"
-# If extensions (or modules to document with autodoc) are in another directory,
-# add these directories to sys.path here. If the directory is relative to the
-# documentation root, use os.path.abspath to make it absolute, like shown here.
-# sys.path.insert(0, os.path.abspath("."))
 
 ##########################################################
 # Copy Examples
@@ -38,16 +31,17 @@ for example in examples:
 project = "arch"
 copyright = "2021, Kevin Sheppard"
 author = "Kevin Sheppard"
-language = "en"
+
+# More warnings
 nitpicky = True
 
 # The short X.Y version
 full_version = parse(arch.__version__)
 short_version = version = arch.__version__
 if full_version.is_devrelease:
-    short_version = f"v{full_version.base_version} (+{full_version.dev})"
-# The full version, including alpha/beta/rc tags.
-release = arch.__version__
+    release = f"v{full_version.base_version} (+{full_version.dev})"
+else:
+    release = short_version
 
 # -- General configuration ---------------------------------------------------
 
@@ -59,6 +53,9 @@ release = arch.__version__
 # extensions coming with Sphinx (named "sphinx.ext.*") or your custom
 # ones.
 extensions = [
+    # One of the next two only
+    "sphinx.ext.napoleon",
+    # "numpydoc",
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
     "sphinx.ext.extlinks",
@@ -69,12 +66,11 @@ extensions = [
     "sphinx.ext.viewcode",
     "sphinx.ext.coverage",
     "sphinx.ext.ifconfig",
-    "numpydoc",
-    # "sphinx.ext.napoleon",
-    "sphinx_autodoc_typehints",
+    "sphinx.ext.githubpages",
     "IPython.sphinxext.ipython_console_highlighting",
     "IPython.sphinxext.ipython_directive",
     "nbsphinx",
+    "sphinx_immaterial",
 ]
 
 try:
@@ -96,7 +92,7 @@ templates_path = ["_templates"]
 # You can specify multiple suffix as a list of string:
 #
 # source_suffix = [".rst", ".md"]
-source_suffix = ".rst"
+source_suffix = {".rst": "restructuredtext"}
 
 # The master toctree document.
 master_doc = "index"
@@ -106,57 +102,71 @@ master_doc = "index"
 #
 # This is also used if you do content translation via gettext catalogs.
 # Usually you set "language" from the command line for these cases.
-language = None
+language = "en"
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
-exclude_patterns: List[str] = []
+exclude_patterns: list[str] = []
 
 # The name of the Pygments (syntax highlighting) style to use.
-pygments_style = "colorful"  # "sphinx"
+pygments_style = "colorful"
 
-# -- Options for HTML output -------------------------------------------------
+# If true, `todo` and `todoList` produce output, else they produce nothing.
+todo_include_todos = True
+
+# -- Options for HTML output ----------------------------------------------
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
-html_theme = "default"
-# on_rtd is whether we are on readthedocs.org
-if not on_rtd:  # only import and set the theme if we"re building docs locally
-    import sphinx_material
-
-    # Adds an HTML table visitor to apply Bootstrap table classes
-    html_theme_path = sphinx_material.html_theme_path()
-    html_context = sphinx_material.get_html_context()
-    html_theme = "sphinx_material"
-
-    # Register the theme as an extension to generate a sitemap.xml
-    extensions.append("sphinx_material")
-
-    # sphinx_material theme options (see theme.conf for more information)
-    html_theme_options = {
-        "base_url": "https://bashtage.github.io/arch/",
-        "repo_url": "https://github.com/bashtage/arch/",
-        "repo_name": "ARCH",
-        # Set the name of the project to appear in the sidebar
-        "nav_title": project + " " + short_version,
-        "globaltoc_depth": 2,
-        "globaltoc_collapse": True,
-        "globaltoc_includehidden": True,
-        "theme_color": "#2196f3",
-        "color_primary": "blue ",
-        "color_accent": "indigo",
-        "html_minify": True,
-        "css_minify": True,
-        "master_doc": False,
-        "version_dropdown": True,
-        "version_info": {
-            "Release": "https://bashtage.github.io/arch/",
-            "Development": "https://bashtage.github.io/arch/devel/",
-            "RTD (Release)": "https://arch.readthedocs.io/",
+# Adds an HTML table visitor to apply Bootstrap table classes
+html_theme = "sphinx_immaterial"
+html_title = f"{project} {release}"
+# sphinx_immaterial theme options
+html_theme_options = {
+    "icon": {"repo": "fontawesome/brands/github"},
+    "site_url": "https://bashtage.github.io/arch/",
+    "repo_url": "https://github.com/bashtage/arch/",
+    "repo_name": "arch",
+    "palette": {"primary": "blue", "accent": "indigo"},
+    "globaltoc_collapse": True,
+    "toc_title": "Contents",
+    "version_dropdown": True,
+    "version_info": [
+        {
+            "version": "https://bashtage.github.io/arch/",
+            "title": "Release",
+            "aliases": [],
         },
-    }
+        {
+            "version": "https://bashtage.github.io/arch/devel/",
+            "title": "Development",
+            "aliases": [],
+        },
+        {
+            "title": "RTD (Release)",
+            "version": "https://arch.readthedocs.io/",
+            "aliases": [],
+        },
+    ],
+    "toc_title_is_page_title": True,
+    "social": [
+        {
+            "icon": "fontawesome/brands/github",
+            "link": "https://github.com/bashtage/arch",
+            "name": "Source on github.com",
+        },
+        {
+            "icon": "fontawesome/brands/python",
+            "link": "https://pypi.org/project/arch/",
+        },
+        {
+            "icon": "fontawesome/solid/quote-left",
+            "link": "https://doi.org/10.5281/zenodo.593254",
+        },
+    ],
+}
 
 html_favicon = "images/favicon.ico"
 html_logo = "images/bw-logo.svg"
@@ -169,9 +179,8 @@ html_logo = "images/bw-logo.svg"
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-if not on_rtd:
-    html_static_path = ["_static"]
-    html_css_files = ["css/small_fixes.css"]
+html_static_path = ["_static"]
+html_css_files = ["css/small_fixes.css"]
 
 # Custom sidebar templates, must be a dictionary that maps document names
 # to template names.
@@ -182,10 +191,9 @@ if not on_rtd:
 # "searchbox.html"]``.
 #
 # html_sidebars = {}
-if not on_rtd:
-    html_sidebars = {
-        "**": ["logo-text.html", "globaltoc.html", "searchbox.html", "localtoc.html"]
-    }
+html_sidebars = {
+    "**": ["logo-text.html", "globaltoc.html", "searchbox.html", "localtoc.html"]
+}
 
 # If false, no module index is generated.
 html_domain_indices = True
@@ -196,21 +204,20 @@ html_domain_indices = True
 htmlhelp_basename = "arch"
 
 # -- Options for LaTeX output ------------------------------------------------
-
-latex_elements: Dict[str, str] = {
-    # The paper size ("letterpaper" or "a4paper").
-    #
-    # "papersize": "letterpaper",
-    # The font size ("10pt", "11pt" or "12pt").
-    #
-    # "pointsize": "10pt",
-    # Additional stuff for the LaTeX preamble.
-    #
-    # "preamble": '',
-    # Latex figure (float) alignment
-    #
-    # "figure_align": "htbp",
-}
+# latex_elements: dict[str, str] = {
+# The paper size ("letterpaper" or "a4paper").
+#
+# "papersize": "letterpaper",
+# The font size ("10pt", "11pt" or "12pt").
+#
+# "pointsize": "10pt",
+# Additional stuff for the LaTeX preamble.
+#
+# "preamble": '',
+# Latex figure (float) alignment
+#
+# "figure_align": "htbp",
+# }
 
 # Grouping the document tree into LaTeX files. List of tuples
 # (source start file, target name, title,
@@ -265,33 +272,77 @@ epub_exclude_files = ["search.html"]
 
 # Example configuration for intersphinx: refer to the Python standard library.
 intersphinx_mapping = {
-    "statsmodels": ("https://www.statsmodels.org/dev/", None),
-    "matplotlib": ("https://matplotlib.org/stable/", None),
-    "scipy": ("https://docs.scipy.org/doc/scipy/", None),
-    "python": ("https://docs.python.org/3/", None),
-    "numpy": ("https://numpy.org/doc/stable/", None),
-    "np": ("https://numpy.org/doc/stable/", None),
-    "pandas": ("https://pandas.pydata.org/pandas-docs/stable/", None),
-    "pd": ("https://pandas.pydata.org/pandas-docs/stable/", None),
+    "statsmodels": ("https://www.statsmodels.org/dev", None),
+    "matplotlib": ("https://matplotlib.org/stable", None),
+    "scipy": ("https://docs.scipy.org/doc/scipy", None),
+    "python": ("https://docs.python.org/3", None),
+    "numpy": ("https://numpy.org/doc/stable", None),
+    "pandas": ("https://pandas.pydata.org/pandas-docs/stable", None),
 }
 
-extlinks = {"issue": ("https://github.com/bashtage/arch/issues/%s", "GH")}
+extlinks = {"issue": ("https://github.com/bashtage/arch/issues/%s", "GH%s")}
 
+
+napoleon_google_docstring = False
 napoleon_use_admonition_for_examples = False
 napoleon_use_admonition_for_notes = False
 napoleon_use_admonition_for_references = False
-
-numpydoc_use_autodoc_signature = True
-numpydoc_xref_param_type = True
-numpydoc_class_members_toctree = False
-
-numpydoc_xref_aliases = {
+napoleon_attr_annotations = True
+napoleon_preprocess_types = True
+napoleon_use_param = True
+napoleon_type_aliases = {
+    "array-like": ":term:`array-like <array_like>`",
+    "array_like": ":term:`array_like`",
     "Figure": "matplotlib.figure.Figure",
     "Axes": "matplotlib.axes.Axes",
     "AxesSubplot": "matplotlib.axes.Axes",
     "DataFrame": "pandas.DataFrame",
     "Series": "pandas.Series",
+    "ndarray": "numpy.ndarray",
+    "np.ndarray": "numpy.array",
+    "pd.Series": "pandas.Series",
+    "RandomState": "numpy.random.RandomState",
+    "Generator": "numpy.random.Generator",
+    "float64": "numpy.double",
+    "numpy.float64": "numpy.double",
+    "OptimizeResult": "scipy.optimize.OptimizeResult",
+    "VarianceForecast": "arch.univariate.volatility.VarianceForecast",
+    "CovarianceEstimator": "arch.covariance.kernel.CovarianceEstimator",
+    "CovarianceEstimate": "arch.covariance.kernel.CovarianceEstimate",
+    "VolatilityUpdater": "arch.univariate.recursions.VolatilityUpdater",
+    "ARCHModel": "arch.univariate.base.ARCHModel",
+    "ARCHModelResult": "arch.univariate.base.ARCHModelResult",
+    "ARCHModelFixedResult": "arch.univariate.base.ARCHModelFixedResult",
 }
+
+numpydoc_use_autodoc_signature = True
+numpydoc_xref_param_type = True
+numpydoc_class_members_toctree = False
+numpydoc_xref_aliases = {
+    "array-like": ":term:`array-like <array_like>`",
+    "array_like": ":term:`array_like`",
+    "Figure": "matplotlib.figure.Figure",
+    "Axes": "matplotlib.axes.Axes",
+    "AxesSubplot": "matplotlib.axes.Axes",
+    "DataFrame": "pandas.DataFrame",
+    "Series": "pandas.Series",
+    "ndarray": "numpy.ndarray",
+    "np.ndarray": "numpy.array",
+    "pd.Series": "pandas.Series",
+    "RandomState": "numpy.random.RandomState",
+    "Generator": "numpy.random.Generator",
+    "float64": "numpy.double",
+    "numpy.float64": "numpy.double",
+    "OptimizeResult": "scipy.optimize.OptimizeResult",
+    "VarianceForecast": "arch.univariate.volatility.VarianceForecast",
+    "CovarianceEstimator": "arch.covariance.kernel.CovarianceEstimator",
+    "CovarianceEstimate": "arch.covariance.kernel.CovarianceEstimate",
+    "VolatilityUpdater": "arch.univariate.recursions.VolatilityUpdater",
+    "ARCHModel": "arch.univariate.base.ARCHModel",
+    "ARCHModelResult": "arch.univariate.base.ARCHModelResult",
+    "ARCHModelFixedResult": "arch.univariate.base.ARCHModelFixedResult",
+}
+numpydoc_xref_ignore = {"type", "optional", "default"}
 
 autosummary_generate = True
 autoclass_content = "class"

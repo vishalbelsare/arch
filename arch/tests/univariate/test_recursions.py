@@ -2,7 +2,6 @@ import os
 import pickle
 import timeit
 import types
-from typing import List
 
 import numpy as np
 from numpy.random import RandomState
@@ -14,6 +13,7 @@ import arch.univariate.recursions_python as recpy
 from arch.univariate.volatility import RiskMetrics2006
 
 CYTHON_COVERAGE = os.environ.get("ARCH_CYTHON_COVERAGE", "0") in ("true", "1", "True")
+DISABLE_NUMBA = os.environ.get("ARCH_DISABLE_NUMBA", False) in ("1", "true", "True")
 
 try:
     import arch.univariate.recursions as rec_cython
@@ -30,7 +30,7 @@ else:
 try:
     import numba  # noqa
 
-    MISSING_NUMBA = False
+    MISSING_NUMBA = False or DISABLE_NUMBA
 except ImportError:
     MISSING_NUMBA = True
 
@@ -58,7 +58,7 @@ class Timer:
         self.repeat = repeat
         self.number = number
         self._run = False
-        self.times: List[float] = []
+        self.times: list[float] = []
         self._codes = [first, second]
         self.ratio = np.inf
 
@@ -72,11 +72,7 @@ class Timer:
         print(self.first_name + ": " + f"{1000 * self.times[0]:0.3f} ms")
         print(self.second_name + ": " + f"{1000 * self.times[1]:0.3f} ms")
         if self.ratio < 1:
-            print(
-                "{} is {:0.1f}% faster".format(
-                    self.first_name, 100 * (1 / self.ratio - 1)
-                )
-            )
+            print(f"{self.first_name} is {100 * (1 / self.ratio - 1):0.1f}% faster")
         else:
             print(f"{self.second_name} is {100 * (self.ratio - 1):0.1f}% faster")
         print(self.first_name + "/" + self.second_name + f" Ratio: {self.ratio:0.3f}\n")
@@ -1242,10 +1238,12 @@ fresids = resids ** 2.0
 """
 
         midas_first = """
-recpy.figarch_recursion(parameters, fresids, sigma2, p, q, nobs, trunc_lag, backcast, var_bounds)
-                """
+recpy.figarch_recursion(parameters, fresids, sigma2, p, q,
+                        nobs, trunc_lag, backcast, var_bounds)
+"""
         midas_second = """
-rec.figarch_recursion(parameters, fresids, sigma2, p, q, nobs, trunc_lag, backcast, var_bounds)
+rec.figarch_recursion(parameters, fresids, sigma2, p, q,
+                      nobs, trunc_lag, backcast, var_bounds)
 """
         timer = Timer(
             midas_first,

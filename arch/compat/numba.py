@@ -1,13 +1,10 @@
 import functools
 import os
-from typing import Any, Callable
+from typing import Any, Callable, Optional
+
+from arch.utility.exceptions import PerformanceWarning
 
 DISABLE_NUMBA = os.environ.get("ARCH_DISABLE_NUMBA", False) in ("1", "true", "True")
-
-
-class PerformanceWarning(UserWarning):
-    """Warning issued if recursions are run in CPython"""
-
 
 performance_warning: str = """
 numba is not available, and this function is being executed without JIT
@@ -20,26 +17,38 @@ try:
 
     from numba import jit
 
-    try:
+    jit = functools.partial(jit, nopython=True)
 
-        def f(x: float, y: float) -> float:
-            return x + y
-
-        fjit = jit(f, nopython=True, fastmath=True)
-        fjit(1.0, 2.0)
-        jit = functools.partial(jit, nopython=True, fastmath=True)
-    except KeyError:
-        jit = functools.partial(jit, nopython=True)
 except ImportError:
 
-    def jit(func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
-        def wrapper(*args: Any, **kwargs: Any) -> Callable[..., Any]:
-            import warnings
+    def jit(
+        function_or_signature: Optional[Callable[..., Any]] = None,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        if function_or_signature is not None and callable(function_or_signature):
+            # Used directly, e.g., f_jit = jit(f)
+            @functools.wraps(function_or_signature)
+            def wrapper(*args: Any, **kwargs: Any) -> Callable[..., Any]:
+                import warnings
 
-            warnings.warn(performance_warning, PerformanceWarning)
-            return func(*args, **kwargs)
+                warnings.warn(performance_warning, PerformanceWarning)
+                return function_or_signature(*args, **kwargs)
 
-        return wrapper
+            return wrapper
+
+        # Used as a decorator, e.g., @jit
+        def wrap(func: Callable[..., Any]) -> Callable[..., Any]:
+            @functools.wraps(func)
+            def wrapper(*args: Any, **kwargs: Any) -> Callable[..., Any]:
+                import warnings
+
+                warnings.warn(performance_warning, PerformanceWarning)
+                return func(*args, **kwargs)
+
+            return wrapper
+
+        return wrap
 
 
 __all__ = ["jit", "PerformanceWarning"]
